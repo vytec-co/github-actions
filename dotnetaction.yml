@@ -1,0 +1,141 @@
+name: .NET Core
+
+on: 
+  watch:
+     types: [ started ] 
+  
+  pull_request:
+    types: [ closed ]
+    branches: [ master ]
+    tags-ignore: [ semversion ]
+      
+jobs:
+  build:
+    if: github.event.pull_request.merged == true 
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.302
+    - name: Install dependencies
+      run: |
+          dotnet restore
+          sudo apt-get install -y gpg && \
+          wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o microsoft.asc.gpg && \
+          sudo mv microsoft.asc.gpg /etc/apt/trusted.gpg.d/ && \
+          wget -q https://packages.microsoft.com/config/ubuntu/18.04/prod.list && \
+          sudo mv prod.list /etc/apt/sources.list.d/microsoft-prod.list && \
+          sudo chown root:root /etc/apt/trusted.gpg.d/microsoft.asc.gpg && \
+          sudo chown root:root /etc/apt/sources.list.d/microsoft-prod.list && \
+          sudo apt-get install -y apt-transport-https && \
+          sudo apt-get update && \
+          sudo apt-get install dotnet-sdk-3.1 -y && \
+          sudo apt-get install dotnet-sdk-2.1 -y && \
+          dotnet tool install --global dotnet-sonarscanner --version 4.8.0 
+    - name: Read version
+      id: package
+      uses: juliangruber/read-file-action@v1
+      with:
+         path: ./appDrive.Connect/appDrive.Connect.csproj
+    - name: Echo version
+      run: |
+         existing_version=$(cat appDrive.Connect/appDrive.Connect.csproj  | grep Version | awk -F\> '{print $2}' | awk -F\< '{print $1}')
+         echo $existing_version
+         export PREV_VER="$existing_version"
+         echo "::set-env name=PREV_VER::$PREV_VER" 
+    - name: Read version
+      id: versionfragment
+      uses: juliangruber/read-file-action@v1
+      with:
+         path: ./.versionfragment        
+    - name: Bump release version
+      id: bump_version
+      uses: christian-draeger/increment-semantic-version@1.0.2
+      with:
+        current-version: ${{ env.PREV_VER }}
+        version-fragment: ${{ steps.versionfragment.outputs.content }}
+    - name: Do something with your bumped release version
+      run: echo ${{ steps.bump_version.outputs.next-version }}
+   
+    - name: Echo updated version
+      run: echo ${{ steps.bump_version.outputs.next-version }}  
+    - name: Find and Replace
+      uses: jacobtomlinson/gha-find-replace@master
+      with:
+        find: ${{ env.PREV_VER }}
+        replace: ${{ steps.bump_version.outputs.next-version }}
+        include: "appDrive.Connect/appDrive.Connect.csproj"
+    - name: Commit files
+      run: |
+        git config --local user.email "tss_jenkins@vytecs.com"
+        git config --local user.name "tssjenkins" 
+        git branch 
+        git add appDrive.Connect/appDrive.Connect.csproj
+        git commit -m "update version ${{ steps.bump_version.outputs.next-version }}"
+        git branch
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v2
+      with:
+        branch: version
+        labels: skip
+    - name: Find Pull Request
+      uses: juliangruber/find-pull-request-action@v1
+      id: find-pull-request
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        branch: version
+    - run: echo "Pull Request ${number} (${sha})"
+      env:
+        number: ${{ steps.find-pull-request.outputs.number }}
+        sha: ${{ steps.find-pull-request.outputs.head-sha }}    
+    - name: Approve Pull Request
+      uses: juliangruber/approve-pull-request-action@v1
+      with:
+        github-token: ${{ secrets.GIT_TOKEN }}
+        number: ${{ steps.find-pull-request.outputs.number }}
+    - name: Merge Pull Request
+      uses: juliangruber/merge-pull-request-action@v1
+      with:
+        github-token: ${{ secrets.GIT_TOKEN }}
+        number: ${{ steps.find-pull-request.outputs.number }}
+        method: squash
+    - name: Bump version and push tag
+      uses: anothrNick/github-tag-action@1.17.2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CUSTOM_TAG: v${{ steps.bump_version.outputs.next-version }}
+    - name: Bump temp and push tag
+      uses: anothrNick/github-tag-action@1.17.2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CUSTOM_TAG: semversion    
+    - name: Delete Branch
+      run: |
+        git config --local user.email "tss_jenkins@vytecs.com"
+        git config --local user.name "tssjenkins" 
+        git push -d origin version
+    
+             
+    - name: Sonarqube Analysis
+      run: |
+           dotnet /home/runner/.dotnet/tools/.store/dotnet-sonarscanner/4.8.0/dotnet-sonarscanner/4.8.0/tools/netcoreapp3.0/any/SonarScanner.MSBuild.dll begin /k:"appDrive-Connect" /v:$tag /d:sonar.host.url="http://quality.tss.digital:9000" /d:sonar.login=fa964af4ef8524127034dcda2453a9009f9eb4f8 /d:sonar.cs.vscoveragexml.reportsPaths=*/TestResults/*/*.coveragexml
+           dotnet pack -c Release 
+           dotnet /home/runner/.dotnet/tools/.store/dotnet-sonarscanner/4.8.0/dotnet-sonarscanner/4.8.0/tools/netcoreapp3.0/any/SonarScanner.MSBuild.dll end /d:sonar.login=fa964af4ef8524127034dcda2453a9009f9eb4f8
+           CE_TASK_ID_KEY="ceTaskId="
+           REPORT_PATH="/home/runner/work/DevOps/DevOps/.sonarqube/out/.sonar/report-task.txt"
+           ce_task_id=$(cat $REPORT_PATH | grep $CE_TASK_ID_KEY | cut -d'=' -f2)
+           echo "QG Script --> Using task id of ${ce_task_id}"
+           export CE_TASK_ID="$ce_task_id"
+           echo "::set-env name=CE_TASK_ID::$CE_TASK_ID" 
+    - name: Echo cetaskid
+      run: echo ${{ env.CE_TASK_ID }}          
+    - name: Quality gate status
+      run: |
+         sh breakbuild.sh 'http://quality.vytec.digital:9000' ${{ secrets.SONAR_TOKEN }} ${{ env.CE_TASK_ID }}
+    - name: dotnet build appDrive-Connect 
+      run: |
+          dotnet nuget add source https://nuget.pkg.github.com/vytecs/index.json --name github --username vytecs --password ${{secrets.appDrive_connect_token}} --store-password-in-clear-text
+          dotnet pack --configuration Release
+          dotnet nuget push "/home/runner/work/DevOps/DevOps/appDrive.Connect/bin/Release/appDrive.Connect.${{ steps.bump_version.outputs.next-version }}.nupkg" --source "github" --skip-duplicate 
