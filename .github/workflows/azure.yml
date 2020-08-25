@@ -61,27 +61,19 @@ jobs:
       with:
         branch: version
         labels: skip
-    - name: Find Pull Request
-      uses: juliangruber/find-pull-request-action@v1
-      id: find-pull-request
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        branch: version
-      # Find the PR associated with this push, if there is one.
     - uses: jwalton/gh-find-current-pr@v1
-      id: findPr
+      id: find-pull-request
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
       # This will echo "Your PR is 7", or be skipped if there is no current PR.
     - run: echo "Your PR is ${PR}"
-      if: success() && steps.findPr.outputs.number
-      env:
-        PR: ${{ steps.findPr.outputs.pr }}  
-    - run: echo "Pull Request ${number} (${sha})"
       if: success() && steps.find-pull-request.outputs.number
       env:
-        number: ${{ steps.find-pull-request.outputs.number }}
-        sha: ${{ steps.find-pull-request.outputs.head-sha }}    
+        PR: ${{ steps.find-pull-request.outputs.pr }}  
+    - run: echo "Your PR is ${PR}"
+      if: success() && steps.find-pull-request.outputs.head-sha
+      env:
+        PR: ${{ steps.find-pull-request.outputs.pr }}   
     - name: Approve Pull Request
       uses: juliangruber/approve-pull-request-action@v1
       with:
