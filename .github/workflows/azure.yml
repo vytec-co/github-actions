@@ -75,12 +75,12 @@ jobs:
       uses: juliangruber/approve-pull-request-action@v1
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        number: ${{ steps.find-pull-request.outputs.PULL_REQUEST_NUMBER }}
+        number: 18
     - name: Merge Pull Request
       uses: juliangruber/merge-pull-request-action@v1
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        number: ${{ steps.find-pull-request.outputs.PULL_REQUEST_NUMBER }}
+        number: 18
         method: squash
     - name: Bump version and push tag
       uses: anothrNick/github-tag-action@1.17.2
