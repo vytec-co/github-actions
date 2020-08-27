@@ -58,29 +58,19 @@ jobs:
         git branch
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@v2
+      id: cpr
       with:
         branch: version
-        labels: skip
-    - name: Find Pull Request
-      uses: juliangruber/find-pull-request-action@v1
-      id: find-pull-request
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        branch: my-branch-name
-    - run: echo "Pull Request ${number} (${sha})"
-      env:
-        number: ${{ steps.find-pull-request.outputs.number }}
-        sha: ${{ steps.find-pull-request.outputs.head-sha }}   
     - name: Approve Pull Request
       uses: juliangruber/approve-pull-request-action@v1
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        number: 18
+        number: ${{ steps.cpr.outputs.pull-request-number }}
     - name: Merge Pull Request
       uses: juliangruber/merge-pull-request-action@v1
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        number: 18
+        number: ${{ steps.cpr.outputs.pull-request-number }}
         method: squash
     - name: Bump version and push tag
       uses: anothrNick/github-tag-action@1.17.2
